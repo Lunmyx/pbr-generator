@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PBR Texture Generator</title>
+    <style>
+        :root {
+            /* Dark Mode (Default) Variables */
+            --bg-body: #121212;
+            --bg-panel: #1e1e1e;
+            --bg-card-header: #252525;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --text-main: #e0e0e0;
+            --text-muted: #a0a0a0;
+            --border: #333;
+            --input-bg: #2a2a2a;
+            --canvas-check-1: #2a2a2a;
+            --canvas-check-2: transparent;
+        }
+
+        /* Light Mode Override */
+        body.light-mode {
+            --bg-body: #f4f4f5;
+            --bg-panel: #ffffff;
+            --bg-card-header: #e4e4e7;
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --text-main: #18181b;
+            --text-muted: #71717a;
+            --border: #d4d4d8;
+            --input-bg: #f4f4f5;
+            --canvas-check-1: #e0e0e0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        header {
+            padding: 15px 20px;
+            background: var(--bg-panel);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        .header-left { display: flex; align-items: center; gap: 15px; }
+        h1 { font-size: 1.4rem; }
+        .subtitle { font-size: 0.85rem; color: var(--text-muted); display: block; margin-top: 4px;}
+
+        /* Controls in Header */
+        .header-controls { display: flex; gap: 10px; align-items: center; }
+
+        select {
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            background: var(--input-bg);
+            color: var(--text-main);
+            cursor: pointer;
+            outline: none;
+        }
+
+        .btn-icon {
+            background: var(--bg-panel);
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1.2rem;
+            transition: 0.2s;
+        }
+        .btn-icon:hover { background: var(--border); }
+
+        /* Layout Principal */
+        .main-layout {
+            display: grid;
+            grid-template-columns: 1fr 400px; 
+            flex: 1;
+            height: calc(100vh - 80px);
+            overflow: hidden;
+        }
+
+        .controls-column {
+            padding: 20px;
+            overflow-y: auto;
+            border-right: 1px solid var(--border);
+        }
+
+        .viewer-column {
+            background: #000; /* 3D Viewer stays dark usually for contrast, handled in JS */
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            transition: background 0.3s;
+        }
+
+        #viewer3d { flex: 1; width: 100%; height: 100%; cursor: move; }
+
+        .viewer-controls {
+            padding: 15px;
+            background: var(--bg-panel);
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .model-btn {
+            background: var(--input-bg);
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .model-btn:hover { border-color: var(--primary); }
+        .model-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+        /* Grid de Texturas */
+        .texture-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        /* Upload */
+        .upload-section {
+            background: var(--bg-panel);
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .upload-section:hover { border-color: var(--primary); background: var(--input-bg); }
+        #fileInput { display: none; }
+
+        /* Cards */
+        .card {
+            background: var(--bg-panel);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        .card-header {
+            padding: 10px 15px;
+            background: var(--bg-card-header);
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            font-size: 0.95rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .canvas-container {
+            position: relative;
+            width: 100%;
+            height: 200px;
+            background-image: 
+                linear-gradient(45deg, var(--canvas-check-1) 25%, transparent 25%), 
+                linear-gradient(-45deg, var(--canvas-check-1) 25%, transparent 25%), 
+                linear-gradient(45deg, transparent 75%, var(--canvas-check-1) 75%), 
+                linear-gradient(-45deg, transparent 75%, var(--canvas-check-1) 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+            background-color: #fff; /* Checkerboard base */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+        canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+        
+        .controls { padding: 15px; display: flex; flex-direction: column; gap: 12px; }
+        .control-group { display: flex; flex-direction: column; gap: 5px; }
+        .section-title {
+            color: var(--primary);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 5px;
+        }
+
+        label { font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between; }
+        input[type="range"] { width: 100%; cursor: pointer; accent-color: var(--primary); }
+        
+        .btn {
+            background: var(--primary); color: white; border: none;
+            padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;
+        }
+        .btn:hover { background: var(--primary-hover); }
+        .btn-outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
+        .btn-outline:hover { background: rgba(59, 130, 246, 0.1); }
+
+        /* Loading */
+        #loadingOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 2000;
+            display: flex; flex-direction: column;
+            justify-content: center; align-items: center;
+            opacity: 0; pointer-events: none; transition: 0.3s;
+        }
+        #loadingOverlay.active { opacity: 1; pointer-events: all; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #333; border-top-color: var(--primary); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* Mobile */
+        @media (max-width: 900px) {
+            .main-layout { grid-template-columns: 1fr; height: auto; overflow: visible; }
+            .viewer-column { height: 400px; order: -1; } 
+            .controls-column { border-right: none; overflow: visible; }
+        }
+    </style>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+<header>
+    <div class="header-left">
+        <div>
+            <h1 data-i18n="appTitle">PBR Pro Generator</h1>
+            <span class="subtitle" data-i18n="appSubtitle">Upload an image to generate textures and view in 3D</span>
+        </div>
+    </div>
+    <div class="header-controls">
+        <select id="langSelect">
+            <option value="en">English</option>
+            <option value="pt">Português</option>
+        </select>
+        <button class="btn-icon" id="themeToggle" title="Toggle Theme">🌙</button>
+    </div>
+</header>
+
+<div class="main-layout">
+    
+    <!-- Controls Column -->
+    <div class="controls-column">
+        
+        <!-- Upload -->
+        <div class="upload-section" id="dropZone">
+            <div style="font-size:2rem; margin-bottom:10px;">📁</div>
+            <div data-i18n="uploadText">Click to upload image or drag & drop here</div>
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <!-- Global Adjustments -->
+        <div class="card" style="margin-bottom:20px;">
+            <div class="card-header" data-i18n="globalSettings">Global Adjustments (Base)</div>
+            <div class="controls">
+                <div class="control-group">
+                    <label><span data-i18n="brightness">Brightness</span> <span id="valGlobalBright">0</span></label>
+                    <input type="range" id="paramGlobalBright" min="-100" max="100" value="0">
+                </div>
+                <div class="control-group">
+                    <label><span data-i18n="contrast">Contrast</span> <span id="valGlobalContrast">0</span></label>
+                    <input type="range" id="paramGlobalContrast" min="-100" max="100" value="0">
+                </div>
+            </div>
+        </div>
+
+        <div class="section-title" data-i18n="mapsTitle">Generated Maps</div>
+        
+        <div class="texture-grid">
+            <!-- Base -->
+            <div class="card">
+                <div class="card-header" data-i18n="albedo">Albedo (Base)</div>
+                <div class="canvas-container"><canvas id="canvasSource"></canvas></div>
+                <div class="controls">
+                    <button class="btn btn-outline" style="width:100%" id="btnReupload" data-i18n="changeImage">Change Image</button>
+                </div>
+            </div>
+
+            <!-- Normal -->
+            <div class="card">
+                <div class="card-header">
+                    <span data-i18n="normalMap">Normal Map</span>
+                    <button class="btn" onclick="downloadMap('canvasNormal', 'normal')">⬇</button>
+                </div>
+                <div class="canvas-container"><canvas id="canvasNormal"></canvas></div>
+                <div class="controls">
+                    <div class="control-group">
+                        <label><span data-i18n="strength">Strength</span> <span id="valNormalStrength">5.0</span></label>
+                        <input type="range" id="paramNormalStrength" min="0" max="20" step="0.5" value="5.0">
+                    </div>
+                    <div class="control-group">
+                        <label><span data-i18n="blur">Blur</span> <span id="valNormalBlur">0</span></label>
+                        <input type="range" id="paramNormalBlur" min="0" max="5" step="0.5" value="0">
+                    </div>
+                    <div class="control-group">
+                        <label><span data-i18n="noiseDetail">Noise/Detail</span> <span id="valNormalNoise">0</span></label>
+                        <input type="range" id="paramNormalNoise" min="0" max="50" value="0">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metallic -->
+            <div class="card">
+                <div class="card-header">
+                    <span>Metallic</span>
+                    <button class="btn" onclick="downloadMap('canvasMetallic', 'metallic')">⬇</button>
+                </div>
+                <div class="canvas-container"><canvas id="canvasMetallic"></canvas></div>
+                <div class="controls">
+                    <div class="control-group">
+                        <label><span data-i18n="threshold">Threshold</span> <span id="valMetalThresh">1.0</span></label>
+                        <input type="range" id="paramMetalThresh" min="0" max="1" step="0.01" value="1.0">
+                    </div>
+                    <div class="control-group">
+                        <label><span data-i18n="contrast">Contrast</span> <span id="valMetalContrast">1.0</span></label>
+                        <input type="range" id="paramMetalContrast" min="0.1" max="3" step="0.1" value="1.0">
+                    </div>
+                </div>
+            </div>
+
+            <!-- AO -->
+            <div class="card">
+                <div class="card-header">
+                    <span>Ambient Occlusion</span>
+                    <button class="btn" onclick="downloadMap('canvasAO', 'ao')">⬇</button>
+                </div>
+                <div class="canvas-container"><canvas id="canvasAO"></canvas></div>
+                <div class="controls">
+                    <div class="control-group">
+                        <label><span data-i18n="intensity">Intensity</span> <span id="valAOStrength">2.0</span></label>
+                        <input type="range" id="paramAOStrength" min="0" max="10" step="0.5" value="2.0">
+                    </div>
+                    <div class="control-group">
+                        <label><span data-i18n="distance">Distance (Blur)</span> <span id="valAOBlur">5</span></label>
+                        <input type="range" id="paramAOBlur" min="0" max="20" step="1" value="5">
+                    </div>
+                    <div class="control-group">
+                        <label><span data-i18n="contrast">Contrast</span> <span id="valAOContrast">1.0</span></label>
+                        <input type="range" id="paramAOContrast" min="0.1" max="3" step="0.1" value="1.0">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Roughness -->
+            <div class="card">
+                <div class="card-header">
+                    <span>Roughness</span>
+                    <button class="btn" onclick="downloadMap('canvasRough', 'roughness')">⬇</button>
+                </div>
+                <div class="canvas-container"><canvas id="canvasRough"></canvas></div>
+                <div class="controls">
+                    <div class="control-group">
+                        <label><span data-i18n="base">Base</span> <span id="valRoughBase">0.5</span></label>
+                        <input type="range" id="paramRoughBase" min="0" max="1" step="0.05" value="0.5">
+                    </div>
+                    <div class="control-group">
+                        <label><span data-i18n="balance">Balance w/ Image</span> <span id="valRoughMix">0.5</span></label>
+                        <input type="range" id="paramRoughMix" min="0" max="1" step="0.1" value="0.5">
+                    </div>
+                    <div class="control-group">
+                        <label><span data-i18n="noise">Noise</span> <span id="valRoughNoise">0</span></label>
+                        <input type="range" id="paramRoughNoise" min="0" max="100" step="1" value="0">
+                    </div>
+                    <div class="control-group" style="flex-direction:row; align-items:center;">
+                        <input type="checkbox" id="paramRoughInvert" style="width:auto;">
+                        <label style="margin-left:5px; margin:0;" data-i18n="invertGloss">Invert (Glossiness)</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3D Viewer Column -->
+    <div class="viewer-column">
+        <div id="viewer3d"></div>
+        <div class="viewer-controls">
+            <button class="model-btn active" onclick="switchModel('sphere', this)" data-i18n="sphere">Sphere</button>
+            <button class="model-btn" onclick="switchModel('cube', this)" data-i18n="cube">Cube</button>
+            <button class="model-btn" onclick="switchModel('plane', this)" data-i18n="plane">Plane</button>
+        </div>
+    </div>
+</div>
+
+<div id="loadingOverlay">
+    <div class="spinner"></div>
+    <div style="color:white; margin-top:15px;" data-i18n="processing">Processing textures...</div>
+</div>
+
+<script>
+    // --- TRANSLATIONS ---
+    const translations = {
+        pt: {
+            appTitle: "Gerador PBR Pro",
+            appSubtitle: "Carregue uma imagem para gerar texturas e visualizar em 3D",
+            uploadText: "Clique para carregar imagem ou arraste aqui",
+            globalSettings: "Ajustes Globais (Base)",
+            brightness: "Brilho",
+            contrast: "Contraste",
+            mapsTitle: "Mapas Gerados",
+            albedo: "Albedo (Base)",
+            changeImage: "Trocar Imagem",
+            normalMap: "Normal Map",
+            strength: "Força",
+            blur: "Blur",
+            noiseDetail: "Ruído/Detalhe",
+            threshold: "Limiar (Threshold)",
+            intensity: "Intensidade",
+            distance: "Distância (Blur)",
+            base: "Base",
+            balance: "Balanceamento w/ Imagem",
+            noise: "Ruído (Noise)",
+            invertGloss: "Inverter (Glossiness)",
+            sphere: "Esfera",
+            cube: "Cubo",
+            plane: "Plano",
+            processing: "Processando texturas..."
+        },
+        en: {
+            appTitle: "PBR Pro Generator",
+            appSubtitle: "Upload an image to generate textures and view in 3D",
+            uploadText: "Click to upload image or drag & drop here",
+            globalSettings: "Global Adjustments (Base)",
+            brightness: "Brightness",
+            contrast: "Contrast",
+            mapsTitle: "Generated Maps",
+            albedo: "Albedo (Base)",
+            changeImage: "Change Image",
+            normalMap: "Normal Map",
+            strength: "Strength",
+            blur: "Blur",
+            noiseDetail: "Noise/Detail",
+            threshold: "Threshold",
+            intensity: "Intensity",
+            distance: "Distance (Blur)",
+            base: "Base",
+            balance: "Balance w/ Image",
+            noise: "Noise",
+            invertGloss: "Invert (Glossiness)",
+            sphere: "Sphere",
+            cube: "Cube",
+            plane: "Plane",
+            processing: "Processing textures..."
+        }
+    };
+
+    // --- THEME & LANGUAGE LOGIC ---
+    const langSelect = document.getElementById('langSelect');
+    const themeToggle = document.getElementById('themeToggle');
+    
+    // --- AUTO DETECTION LOGIC ---
+    // 1. Try to get saved preference
+    let currentLang = localStorage.getItem('pbr_lang');
+
+    // 2. If not saved, detect browser language
+    if (!currentLang) {
+        const browserLang = navigator.language || navigator.userLanguage;
+        // If browser starts with 'pt', use Portuguese. Default to English otherwise.
+        if (browserLang.toLowerCase().startsWith('pt')) {
+            currentLang = 'pt';
+        } else {
+            currentLang = 'en';
+        }
+        // Save this auto-detected choice so it persists on next visit
+        localStorage.setItem('pbr_lang', currentLang);
+    }
+
+    let isLightMode = localStorage.getItem('pbr_theme') === 'light';
+
+    function applySettings() {
+        // Language
+        langSelect.value = currentLang;
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            const key = el.getAttribute('data-i18n');
+            if (translations[currentLang][key]) {
+                el.innerText = translations[currentLang][key];
+            }
+        });
+
+        // Theme
+        if (isLightMode) {
+            document.body.classList.add('light-mode');
+            themeToggle.innerText = '☀️';
+            scene.background = new THREE.Color(0xeeeeee); // Light gray for 3D
+        } else {
+            document.body.classList.remove('light-mode');
+            themeToggle.innerText = '🌙';
+            scene.background = new THREE.Color(0x111111); // Dark gray for 3D
+        }
+    }
+
+    langSelect.addEventListener('change', (e) => {
+        currentLang = e.target.value;
+        localStorage.setItem('pbr_lang', currentLang);
+        applySettings();
+    });
+
+    themeToggle.addEventListener('click', () => {
+        isLightMode = !isLightMode;
+        localStorage.setItem('pbr_theme', isLightMode ? 'light' : 'dark');
+        applySettings();
+    });
+
+    // --- THREE.JS SETUP ---
+    const viewerContainer = document.getElementById('viewer3d');
+    const scene = new THREE.Scene();
+    // Default dark background, will be updated by applySettings
+    scene.background = new THREE.Color(0x111111);
+
+    const camera = new THREE.PerspectiveCamera(45, viewerContainer.clientWidth / viewerContainer.clientHeight, 0.1, 100);
+    camera.position.set(0, 0, 3.5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
+    renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    viewerContainer.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+    dirLight.position.set(2, 5, 5);
+    scene.add(dirLight);
+
+    const backLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    backLight.position.set(-2, 2, -5);
+    scene.add(backLight);
+
+    const material = new THREE.MeshStandardMaterial({
+        color: 0x808080,
+        metalness: 0,
+        roughness: 0.5,
+        side: THREE.DoubleSide
+    });
+
+    const geometries = {
+        sphere: new THREE.SphereGeometry(1, 64, 64),
+        cube: new THREE.BoxGeometry(1.4, 1.4, 1.4),
+        plane: new THREE.PlaneGeometry(2.5, 2.5)
+    };
+
+    let currentMesh = new THREE.Mesh(geometries.sphere, material);
+    scene.add(currentMesh);
+
+    const threeTextures = {
+        map: null, normalMap: null, metalnessMap: null, roughnessMap: null, aoMap: null
+    };
+
+    function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+        if (!viewerContainer.clientWidth) return;
+        camera.aspect = viewerContainer.clientWidth / viewerContainer.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(viewerContainer.clientWidth, viewerContainer.clientHeight);
+    });
+
+    window.switchModel = function(type, btn) {
+        scene.remove(currentMesh);
+        currentMesh = new THREE.Mesh(geometries[type], material);
+        scene.add(currentMesh);
+        document.querySelectorAll('.model-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
+
+    // --- TEXTURE APP LOGIC ---
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const btnReupload = document.getElementById('btnReupload');
+
+    const canvases = {
+        source: document.getElementById('canvasSource'),
+        normal: document.getElementById('canvasNormal'),
+        metallic: document.getElementById('canvasMetallic'),
+        ao: document.getElementById('canvasAO'),
+        rough: document.getElementById('canvasRough')
+    };
+
+    const ctxs = {
+        source: canvases.source.getContext('2d'),
+        normal: canvases.normal.getContext('2d'),
+        metallic: canvases.metallic.getContext('2d'),
+        ao: canvases.ao.getContext('2d'),
+        rough: canvases.rough.getContext('2d')
+    };
+
+    let originalImage = null;
+    let sourceDataRaw = null; 
+    let sourceDataProcessed = null;
+
+    function showLoading(show) {
+        if (show) loadingOverlay.classList.add('active');
+        else loadingOverlay.classList.remove('active');
+    }
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    btnReupload.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', handleFile);
+
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.borderColor = '#3b82f6'; });
+    dropZone.addEventListener('dragleave', () => dropZone.style.borderColor = 'var(--border)'); 
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.borderColor = 'var(--border)';
+        if (e.dataTransfer.files.length) processFile(e.dataTransfer.files[0]);
+    });
+
+    const inputs = document.querySelectorAll('input');
+    inputs.forEach(input => {
+        input.addEventListener('input', (e) => {
+            const labelSpan = e.target.parentElement.querySelector('span');
+            if (labelSpan) labelSpan.textContent = e.target.value;
+            debouncedGenerate();
+        });
+    });
+
+    let debounceTimer;
+    function debouncedGenerate() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+            if (originalImage) generateMaps();
+        }, 50); 
+    }
+
+    function handleFile(e) {
+        if (e.target.files.length) processFile(e.target.files[0]);
+    }
+
+    function processFile(file) {
+        if (!file.type.startsWith('image/')) return alert(currentLang === 'pt' ? 'Imagem inválida.' : 'Invalid image file.');
+        showLoading(true);
+        setTimeout(() => {
+            try {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const img = new Image();
+                        img.onload = () => {
+                            try {
+                                originalImage = img;
+                                setupCanvases(img.width, img.height);
+                                initThreeTextures();
+                                generateMaps();
+                                showLoading(false);
+                            } catch (err) {
+                                console.error(err);
+                                alert(currentLang === 'pt' ? "Erro ao processar imagem." : "Error processing image.");
+                                showLoading(false);
+                            }
+                        };
+                        img.onerror = () => {
+                            alert(currentLang === 'pt' ? "Erro ao carregar arquivo." : "Error loading file.");
+                            showLoading(false);
+                        }
+                        img.src = e.target.result;
+                    } catch (err) { console.error(err); showLoading(false); }
+                };
+                reader.readAsDataURL(file);
+            } catch (err) { console.error(err); showLoading(false); }
+        }, 100);
+    }
+
+    function setupCanvases(w, h) {
+        let maxW = 1024; 
+        let scale = 1;
+        if (w > maxW) { scale = maxW / w; w = maxW; h = Math.floor(h * scale); }
+        Object.values(canvases).forEach(c => { c.width = w; c.height = h; });
+        ctxs.source.drawImage(originalImage, 0, 0, w, h);
+        try { sourceDataRaw = ctxs.source.getImageData(0, 0, w, h); } 
+        catch (e) { throw new Error("Pixel read error."); }
+    }
+
+    function initThreeTextures() {
+        if(threeTextures.map) threeTextures.map.dispose();
+        if(threeTextures.normalMap) threeTextures.normalMap.dispose();
+        if(threeTextures.metalnessMap) threeTextures.metalnessMap.dispose();
+        if(threeTextures.roughnessMap) threeTextures.roughnessMap.dispose();
+        if(threeTextures.aoMap) threeTextures.aoMap.dispose();
+
+        threeTextures.map = new THREE.CanvasTexture(canvases.source);
+        threeTextures.normalMap = new THREE.CanvasTexture(canvases.normal);
+        threeTextures.metalnessMap = new THREE.CanvasTexture(canvases.metallic);
+        threeTextures.roughnessMap = new THREE.CanvasTexture(canvases.rough);
+        threeTextures.aoMap = new THREE.CanvasTexture(canvases.ao);
+
+        threeTextures.map.encoding = THREE.sRGBEncoding;
+        
+        material.map = threeTextures.map;
+        material.normalMap = threeTextures.normalMap;
+        material.metalnessMap = threeTextures.metalnessMap;
+        material.roughnessMap = threeTextures.roughnessMap;
+        material.aoMap = threeTextures.aoMap;
+        
+        material.needsUpdate = true;
+    }
+
+    function generateMaps() {
+        if (!sourceDataRaw) return;
+        try {
+            const w = sourceDataRaw.width, h = sourceDataRaw.height;
+            applyGlobalAdjustments();
+            ctxs.source.putImageData(sourceDataProcessed, 0, 0);
+            threeTextures.map.needsUpdate = true;
+
+            const params = {
+                normal: {
+                    strength: parseFloat(document.getElementById('paramNormalStrength').value),
+                    blur: parseFloat(document.getElementById('paramNormalBlur').value),
+                    noise: parseFloat(document.getElementById('paramNormalNoise').value),
+                    invertY: true
+                },
+                metal: {
+                    threshold: parseFloat(document.getElementById('paramMetalThresh').value),
+                    contrast: parseFloat(document.getElementById('paramMetalContrast').value)
+                },
+                ao: {
+                    strength: parseFloat(document.getElementById('paramAOStrength').value),
+                    blur: parseFloat(document.getElementById('paramAOBlur').value),
+                    contrast: parseFloat(document.getElementById('paramAOContrast').value)
+                },
+                rough: {
+                    base: parseFloat(document.getElementById('paramRoughBase').value),
+                    mix: parseFloat(document.getElementById('paramRoughMix').value),
+                    noise: parseFloat(document.getElementById('paramRoughNoise').value),
+                    invert: document.getElementById('paramRoughInvert').checked
+                }
+            };
+
+            generateNormalMap(w, h, params.normal);
+            generateMetallic(w, h, params.metal);
+            generateAO(w, h, params.ao);
+            generateRoughness(w, h, params.rough);
+
+            threeTextures.normalMap.needsUpdate = true;
+            threeTextures.metalnessMap.needsUpdate = true;
+            threeTextures.roughnessMap.needsUpdate = true;
+            threeTextures.aoMap.needsUpdate = true;
+        } catch (err) { console.error(err); }
+    }
+
+    function applyGlobalAdjustments() {
+        const bright = parseFloat(document.getElementById('paramGlobalBright').value);
+        const contrast = parseFloat(document.getElementById('paramGlobalContrast').value);
+        const src = sourceDataRaw.data;
+        const dst = new Uint8ClampedArray(src); 
+        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+        for (let i = 0; i < src.length; i += 4) {
+            let r = src[i] + bright, g = src[i+1] + bright, b = src[i+2] + bright;
+            r = factor * (r - 128) + 128; g = factor * (g - 128) + 128; b = factor * (b - 128) + 128;
+            dst[i] = clamp(r); dst[i+1] = clamp(g); dst[i+2] = clamp(b); dst[i+3] = 255;
+        }
+        sourceDataProcessed = new ImageData(dst, sourceDataRaw.width, sourceDataRaw.height);
+    }
+
+    function generateNormalMap(w, h, p) {
+        const src = sourceDataProcessed.data;
+        const dstImg = ctxs.normal.createImageData(w, h);
+        const dst = dstImg.data;
+        const strength = p.strength;
+        for (let y = 1; y < h - 1; y++) {
+            for (let x = 1; x < w - 1; x++) {
+                const i = (y * w + x) * 4;
+                const lum = (ox, oy) => {
+                    const idx = ((y + oy) * w + (x + ox)) * 4;
+                    return 0.299 * src[idx] + 0.587 * src[idx+1] + 0.114 * src[idx+2];
+                };
+                const gx = -1 * lum(-1, -1) + 1 * lum(1, -1) + -2 * lum(-1, 0) + 2 * lum(1, 0) + -1 * lum(-1, 1) + 1 * lum(1, 1);
+                const gy = -1 * lum(-1, -1) - 2 * lum(0, -1) - 1 * lum(1, -1) + 1 * lum(-1, 1) + 2 * lum(0, 1) + 1 * lum(1, 1);
+                let nx = gx * strength * 0.01, ny = gy * strength * 0.01, nz = 1.0;
+                if (p.noise > 0) { nx += (Math.random() - 0.5) * p.noise * 0.05; ny += (Math.random() - 0.5) * p.noise * 0.05; nz += (Math.random() - 0.5) * p.noise * 0.05; }
+                const len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+                if (len === 0) { nx=0; ny=0; nz=1; } else { nx /= len; ny /= len; nz /= len; }
+                dst[i] = (nx * 0.5 + 0.5) * 255;
+                dst[i+1] = (p.invertY ? -ny : ny) * 0.5 + 0.5 * 255;
+                dst[i+2] = (nz * 0.5 + 0.5) * 255;
+                dst[i+3] = 255;
+            }
+        }
+        if (p.blur > 0) applyBoxBlur(dstImg, w, h, p.blur);
+        ctxs.normal.putImageData(dstImg, 0, 0);
+    }
+
+    function generateMetallic(w, h, p) {
+        const src = sourceDataProcessed.data;
+        const dstImg = ctxs.metallic.createImageData(w, h);
+        const dst = dstImg.data;
+        const thresh = p.threshold * 255;
+        const factor = (259 * (p.contrast * 255 + 255)) / (255 * (259 - p.contrast * 255));
+        for (let i = 0; i < src.length; i += 4) {
+            let lum = 0.299 * src[i] + 0.587 * src[i+1] + 0.114 * src[i+2];
+            lum = factor * (lum - 128) + 128;
+            let val = lum >= thresh ? 255 : 0;
+            dst[i] = dst[i+1] = dst[i+2] = val; dst[i+3] = 255;
+        }
+        ctxs.metallic.putImageData(dstImg, 0, 0);
+    }
+
+    function generateAO(w, h, p) {
+        const src = sourceDataProcessed.data;
+        const dstImg = ctxs.ao.createImageData(w, h);
+        const dst = dstImg.data;
+        for (let i = 0; i < src.length; i += 4) {
+            let lum = 0.299 * src[i] + 0.587 * src[i+1] + 0.114 * src[i+2];
+            let val = 255 - lum; val = val * p.strength;
+            const aoFactor = (259 * (p.contrast * 255 + 255)) / (255 * (259 - p.contrast * 255));
+            val = aoFactor * (val - 128) + 128;
+            dst[i] = dst[i+1] = dst[i+2] = clamp(val); dst[i+3] = 255;
+        }
+        if (p.blur > 0) applyBoxBlur(dstImg, w, h, p.blur);
+        ctxs.ao.putImageData(dstImg, 0, 0);
+    }
+
+    function generateRoughness(w, h, p) {
+        const src = sourceDataProcessed.data;
+        const dstImg = ctxs.rough.createImageData(w, h);
+        const dst = dstImg.data;
+        const baseVal = p.base * 255;
+        for (let i = 0; i < src.length; i += 4) {
+            let lum = 0.299 * src[i] + 0.587 * src[i+1] + 0.114 * src[i+2];
+            let val = (lum * p.mix) + (baseVal * (1 - p.mix));
+            if (p.noise > 0) val += (Math.random() - 0.5) * p.noise * 2;
+            if (p.invert) val = 255 - val;
+            dst[i] = dst[i+1] = dst[i+2] = clamp(val); dst[i+3] = 255;
+        }
+        if (p.noise > 20) applyBoxBlur(dstImg, w, h, 1); 
+        ctxs.rough.putImageData(dstImg, 0, 0);
+    }
+
+    function clamp(v) { return Math.max(0, Math.min(255, v)); }
+    function applyBoxBlur(img, w, h, r) {
+        const src = new Uint8ClampedArray(img.data);
+        const dst = img.data;
+        r = Math.min(r, 10);
+        for (let y = 0; y < h; y++) {
+            for (let x = 0; x < w; x++) {
+                let tr=0, tg=0, tb=0, c=0;
+                for (let ky = -r; ky <= r; ky+=2) {
+                    for (let kx = -r; kx <= r; kx+=2) {
+                        const ny = y+ky, nx = x+kx;
+                        if (ny>=0 && ny<h && nx>=0 && nx<w) {
+                            const idx = (ny*w+nx)*4;
+                            tr+=src[idx]; tg+=src[idx+1]; tb+=src[idx+2]; c++;
+                        }
+                    }
+                }
+                const i = (y*w+x)*4;
+                dst[i]=tr/c; dst[i+1]=tg/c; dst[i+2]=tb/c;
+            }
+        }
+    }
+
+    window.downloadMap = (id, name) => {
+        const c = document.getElementById(id);
+        const l = document.createElement('a');
+        l.download = `${name}.png`;
+        l.href = c.toDataURL();
+        l.click();
+    }
+
+    // Init Theme and Language on Load
+    applySettings();
+
+</script>
+</body>
+</html>
